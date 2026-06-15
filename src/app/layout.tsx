@@ -1,10 +1,17 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
+import Script from 'next/script';
 import './globals.css';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { ToastProvider } from '@/components/ui';
 import { AuthProvider } from '@/components/providers/AuthProvider';
+
+const MIDTRANS_SNAP_SRC =
+  process.env.MIDTRANS_IS_PRODUCTION === 'true'
+    ? 'https://app.midtrans.com/snap/snap.js'
+    : 'https://app.sandbox.midtrans.com/snap/snap.js';
+const MIDTRANS_CLIENT_KEY = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY;
 
 const inter = Inter({
   subsets: ['latin'],
@@ -50,6 +57,9 @@ export default function RootLayout({
             <Footer />
           </ToastProvider>
         </AuthProvider>
+        {MIDTRANS_CLIENT_KEY && (
+          <Script src={MIDTRANS_SNAP_SRC} data-client-key={MIDTRANS_CLIENT_KEY} strategy="lazyOnload" />
+        )}
       </body>
     </html>
   );

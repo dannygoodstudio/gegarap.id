@@ -24,11 +24,6 @@ const links = [
   { href: '/onboarding', label: 'Jadi Mitra', icon: Briefcase },
 ];
 
-const accountLinks = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/dashboard', label: 'Riwayat Booking', icon: ClipboardList },
-];
-
 /** Mask a normalised WA number for display, e.g. 6281234567890 → +62 812***7890. */
 function maskPhone(phone?: string): string {
   if (!phone) return 'Akun';
@@ -47,6 +42,16 @@ export function Navbar() {
 
   const authed = status === 'authenticated';
   const masked = maskPhone(session?.user?.phone);
+  const isProvider = session?.user?.role === 'PROVIDER';
+
+  // "Dashboard" is the customer view; providers get an extra link to their
+  // own dashboard. (Riwayat Booking lives inside the customer dashboard.)
+  const accountLinks = [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    ...(isProvider
+      ? [{ href: '/provider/dashboard', label: 'Dashboard Tukang', icon: ClipboardList }]
+      : []),
+  ];
 
   React.useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);

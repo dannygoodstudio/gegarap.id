@@ -27,7 +27,12 @@ export const authOptions: NextAuthOptions = {
         if (!valid) return null;
 
         const user = await upsertUser(phone);
-        return { id: user.id, phone: user.phone ?? phone, name: user.name ?? phone };
+        return {
+          id: user.id,
+          phone: user.phone ?? phone,
+          name: user.name ?? phone,
+          role: user.role,
+        };
       },
     }),
   ],
@@ -42,6 +47,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.phone = (user as { phone?: string }).phone ?? token.phone;
+        token.role = (user as { role?: string }).role ?? token.role;
       }
       return token;
     },
@@ -49,6 +55,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.id;
         session.user.phone = token.phone;
+        session.user.role = token.role;
       }
       return session;
     },

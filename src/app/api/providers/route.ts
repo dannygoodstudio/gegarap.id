@@ -1,11 +1,13 @@
+import { getServerSession } from 'next-auth';
 import prisma from '@/lib/prisma';
+import { authOptions } from '@/lib/auth';
 import { ok, fail, handle } from '@/lib/api';
-import { providerSchema } from '@/lib/validations';
+import { onboardingSchema } from '@/lib/validations';
 
 export async function GET() {
   return handle(async () => {
     const providers = await prisma.providerProfile.findMany({
-      where: { isVerified: true },
+      where: { isVerified: true, available: true },
       include: { user: { select: { name: true } } },
       orderBy: { rating: 'desc' },
     });
@@ -15,35 +17,49 @@ export async function GET() {
 
 export async function POST(req: Request) {
   return handle(async () => {
+    // Onboarding requires an authenticated session — no anonymous profiles.
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return fail('Harus login dulu untuk mendaftar sebagai tukang.', 401);
+    }
+
     const body = await req.json().catch(() => null);
     if (!body) return fail('Body permintaan tidak valid.', 400);
 
-    const input = providerSchema.parse(body);
+    const input = onboardingSchema.parse(body);
 
-    const existing = await prisma.user.findUnique({ where: { email: input.email } });
-    if (existing) {
-      return fail('Email sudah terdaftar.', 409, { email: 'Email ini sudah digunakan.' });
-    }
+    // Identity comes from the session, never the body. The profile is tied to
+    // the logged-in user; upsert keyed by userId so re-submitting edits it
+    // instead of erroring or duplicating.
+    const profile = await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: session.user.id },
+        data: { name: input.name, role: 'PROVIDER' },
+      });
 
-    const user = await prisma.user.create({
-      data: {
-        name: input.name,
-        email: input.email,
-        phoneNumber: input.phoneNumber || null,
-        role: 'PROVIDER',
-        providerProfile: {
-          create: {
-            category: input.category,
-            dailyRate: input.dailyRate,
-            goPayNumber: input.goPayNumber,
-            bio: input.bio || null,
-            isVerified: false, // pending KYC review
-          },
+      return tx.providerProfile.upsert({
+        where: { userId: session.user.id },
+        update: {
+          category: input.category,
+          districts: input.districts,
+          dailyRate: input.dailyRate,
+          goPayNumber: input.goPayNumber,
+          bio: input.bio || null,
+          ktpImageUrl: input.ktpImageUrl ?? undefined,
         },
-      },
-      include: { providerProfile: true },
+        create: {
+          userId: session.user.id,
+          category: input.category,
+          districts: input.districts,
+          dailyRate: input.dailyRate,
+          goPayNumber: input.goPayNumber,
+          bio: input.bio || null,
+          ktpImageUrl: input.ktpImageUrl ?? null,
+          isVerified: false, // pending KYC review
+        },
+      });
     });
 
-    return ok({ providerProfileId: user.providerProfile?.id, name: user.name }, 201);
+    return ok({ providerProfileId: profile.id, name: input.name }, 201);
   })();
 }

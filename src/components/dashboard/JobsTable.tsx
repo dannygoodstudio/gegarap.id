@@ -26,6 +26,8 @@ const PAGE_SIZE = 5;
 
 const statusVariant: Record<string, 'warning' | 'primary' | 'success' | 'neutral'> = {
   PENDING: 'warning',
+  CONFIRMED: 'primary',
+  IN_PROGRESS: 'primary',
   ONGOING: 'primary',
   COMPLETED: 'success',
   CANCELLED: 'neutral',
@@ -33,6 +35,8 @@ const statusVariant: Record<string, 'warning' | 'primary' | 'success' | 'neutral
 
 const statusLabel: Record<string, string> = {
   PENDING: 'Menunggu',
+  CONFIRMED: 'Dikonfirmasi',
+  IN_PROGRESS: 'Berjalan',
   ONGOING: 'Berjalan',
   COMPLETED: 'Selesai',
   CANCELLED: 'Dibatalkan',

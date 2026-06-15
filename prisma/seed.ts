@@ -7,11 +7,15 @@ const adapter = new PrismaPg({
 });
 const prisma = new PrismaClient({ adapter });
 
+const PLATFORM_FEE = 20_000;
+
 const providers = [
   {
     name: 'Budi Santoso',
     email: 'budi@example.com',
+    phone: '628110000001',
     category: 'Tukang Ledeng',
+    districts: ['Depok', 'Ngaglik', 'Mlati'],
     dailyRate: 150000,
     goPayNumber: '081234567890',
     bio: 'Spesialis instalasi & perbaikan pipa air, pompa, dan saluran. 8 tahun pengalaman menangani rumah tinggal di seputaran DIY.',
@@ -24,7 +28,9 @@ const providers = [
   {
     name: 'Agus Pratama',
     email: 'agus@example.com',
+    phone: '628110000002',
     category: 'Tukang Listrik',
+    districts: ['Gondokusuman', 'Umbulharjo', 'Mergangsan'],
     dailyRate: 180000,
     goPayNumber: '081298765432',
     bio: 'Pemasangan instalasi listrik baru, penambahan daya, dan perbaikan korsleting. Bersertifikat & mengutamakan keselamatan.',
@@ -37,7 +43,9 @@ const providers = [
   {
     name: 'Siti Rahayu',
     email: 'siti@example.com',
+    phone: '628110000003',
     category: 'Pembersih Rumah',
+    districts: ['Kasihan', 'Sewon', 'Banguntapan'],
     dailyRate: 120000,
     goPayNumber: '081211223344',
     bio: 'Layanan bersih-bersih menyeluruh: dapur, kamar mandi, hingga general cleaning pasca renovasi. Rapi, cepat, terpercaya.',
@@ -50,7 +58,9 @@ const providers = [
   {
     name: 'Joko Widodo',
     email: 'joko@example.com',
+    phone: '628110000004',
     category: 'Tukang Kebun',
+    districts: ['Ngaglik', 'Kalasan'],
     dailyRate: 110000,
     goPayNumber: '081255667788',
     bio: 'Perawatan taman, pemangkasan, dan penataan tanaman hias. Membuat halaman Anda kembali asri.',
@@ -63,7 +73,9 @@ const providers = [
   {
     name: 'Eko Nugroho',
     email: 'eko@example.com',
+    phone: '628110000005',
     category: 'Tukang Bangunan',
+    districts: ['Gamping', 'Kasihan', 'Mlati'],
     dailyRate: 200000,
     goPayNumber: '081299887766',
     bio: 'Renovasi, pengecatan, pasang keramik, dan pekerjaan tukang umum. Hasil rapi sesuai anggaran.',
@@ -75,9 +87,20 @@ const providers = [
   },
 ];
 
+/** Snapshot financials for a job, mirroring lib/calculations.ts. */
+function financials(dailyRate: number, days: number, dp = PLATFORM_FEE) {
+  const totalFee = dailyRate * days;
+  const dpAmount = Math.max(dp, PLATFORM_FEE);
+  const platformCommission = PLATFORM_FEE;
+  const providerPayout = totalFee - platformCommission;
+  return { totalFee, dpAmount, platformCommission, providerPayout };
+}
+
 async function main() {
   console.log('🌱 Seeding database...');
 
+  // Order matters because of FK relations.
+  await prisma.review.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.job.deleteMany();
   await prisma.providerProfile.deleteMany();
@@ -89,13 +112,18 @@ async function main() {
       data: {
         name: p.name,
         email: p.email,
+        phone: p.phone,
         role: 'PROVIDER',
         providerProfile: {
           create: {
             category: p.category,
+            districts: p.districts,
             dailyRate: p.dailyRate,
             goPayNumber: p.goPayNumber,
+            payoutMethod: 'gopay',
+            payoutDetails: { phone: p.goPayNumber },
             isVerified: true,
+            available: true,
             bio: p.bio,
             rating: p.rating,
             ratingCount: p.ratingCount,
@@ -115,41 +143,108 @@ async function main() {
     }
   }
 
-  // A few demo bookings so the provider dashboard isn't empty on first run.
+  // A demo customer so the customer dashboard isn't empty. Login-testable via
+  // WhatsApp OTP on phone 628120000001.
   const customer = await prisma.user.create({
     data: {
       name: 'Pak Susanto',
       email: 'susanto@example.com',
+      phone: '628120000001',
+      phoneNumber: '08120000001',
       role: 'CUSTOMER',
-      phoneNumber: '08122334455',
     },
   });
 
   const demoJobs = [
-    { address: 'Jl. Kaliurang KM 5, Sleman', days: 2, status: 'PENDING' },
-    { address: 'Perum Griya Asri No. 12, Bantul', days: 3, status: 'ONGOING' },
-    { address: 'Jl. Magelang KM 7, Sleman', days: 1, status: 'COMPLETED' },
+    {
+      address: 'Jl. Kaliurang KM 5, Sleman',
+      district: 'Ngaglik',
+      description: 'Keran dapur bocor & saluran air mampet.',
+      days: 2,
+      timeSlot: 'pagi',
+      status: 'PENDING',
+      paymentStatus: 'PENDING',
+    },
+    {
+      address: 'Perum Griya Asri No. 12, Bantul',
+      district: 'Sewon',
+      description: 'Pemasangan instalasi listrik tambahan di garasi.',
+      days: 3,
+      timeSlot: 'siang',
+      status: 'IN_PROGRESS',
+      paymentStatus: 'PAID',
+    },
+    {
+      address: 'Jl. Magelang KM 7, Sleman',
+      district: 'Mlati',
+      description: 'General cleaning pasca renovasi.',
+      days: 1,
+      timeSlot: 'sore',
+      status: 'COMPLETED',
+      paymentStatus: 'DISBURSED',
+    },
   ];
 
   for (let i = 0; i < demoJobs.length && i < createdProfiles.length; i++) {
     const profile = createdProfiles[i];
     const d = demoJobs[i];
-    const totalFee = profile.dailyRate * d.days;
-    const platformCommission = Math.min(totalFee * 0.1, 20_000 * d.days);
-    await prisma.job.create({
+    const fin = financials(profile.dailyRate, d.days);
+    const scheduledDate = new Date(Date.now() + (i + 1) * 86_400_000);
+
+    const paymentData =
+      d.paymentStatus === 'PENDING'
+        ? { status: 'PENDING' as const }
+        : d.paymentStatus === 'PAID'
+          ? { status: 'PAID' as const, paidAt: new Date(), midtransPaymentType: 'gopay' }
+          : {
+              status: 'DISBURSED' as const,
+              paidAt: new Date(Date.now() - 2 * 86_400_000),
+              midtransPaymentType: 'gopay',
+              disbursedAt: new Date(),
+              disbursedAmount: fin.providerPayout,
+              platformFeeCharged: fin.platformCommission,
+            };
+
+    const job = await prisma.job.create({
       data: {
         customerId: customer.id,
         providerProfileId: profile.id,
+        status: d.status,
+        description: d.description,
         estimatedDays: d.days,
         customerAddress: d.address,
-        customerWaNumber: '08122334455',
-        status: d.status,
-        totalFee,
-        platformCommission,
-        providerPayout: totalFee - platformCommission,
-        payments: { create: { amount: profile.dailyRate, type: 'DP', status: 'SUCCESS' } },
+        customerWaNumber: '08120000001',
+        district: d.district,
+        scheduledDate,
+        timeSlot: d.timeSlot,
+        dailyRate: profile.dailyRate,
+        totalFee: fin.totalFee,
+        dpAmount: fin.dpAmount,
+        platformCommission: fin.platformCommission,
+        providerPayout: fin.providerPayout,
+        payment: {
+          create: {
+            amount: fin.dpAmount,
+            type: 'DP',
+            midtransOrderId: `GGR-SEED-${i}-${Date.now()}`,
+            ...paymentData,
+          },
+        },
       },
     });
+
+    // The completed job gets a review (drives the provider rating display).
+    if (d.status === 'COMPLETED') {
+      await prisma.review.create({
+        data: {
+          jobId: job.id,
+          userId: customer.id,
+          providerProfileId: profile.id,
+          rating: 5,
+          comment: 'Kerjanya rapi dan cepat, sangat memuaskan. Terima kasih!',
+        },
+      });
+    }
   }
 
   console.log(

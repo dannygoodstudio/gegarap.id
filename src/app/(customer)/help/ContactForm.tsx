@@ -10,7 +10,7 @@ import { contactSchema, fieldErrors } from '@/lib/validations';
 
 export function ContactForm() {
   const toast = useToast();
-  const [form, setForm] = React.useState({ name: '', email: '', message: '' });
+  const [form, setForm] = React.useState({ name: '', phone: '', message: '' });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -43,8 +43,8 @@ export function ContactForm() {
         return;
       }
 
-      toast.success('Pesan terkirim!', 'Tim kami akan membalas via email Anda.');
-      setForm({ name: '', email: '', message: '' });
+      toast.success('Pesan terkirim!', 'Tim kami akan membalas via WhatsApp Anda.');
+      setForm({ name: '', phone: '', message: '' });
     } catch {
       toast.error('Koneksi bermasalah', 'Tidak dapat terhubung ke server.');
     } finally {
@@ -66,13 +66,13 @@ export function ContactForm() {
             invalid={!!errors.name}
           />
         </Field>
-        <Field label="Email" required error={errors.email}>
+        <Field label="Nomor WhatsApp" required error={errors.phone}>
           <Input
-            type="email"
-            value={form.email}
-            onChange={(e) => update('email', e.target.value)}
-            placeholder="email@anda.com"
-            invalid={!!errors.email}
+            value={form.phone}
+            onChange={(e) => update('phone', e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder="08123456789"
+            inputMode="numeric"
+            invalid={!!errors.phone}
           />
         </Field>
       </div>

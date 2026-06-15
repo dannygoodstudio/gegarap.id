@@ -1,67 +1,104 @@
+import { randomUUID } from 'node:crypto';
+import { getServerSession } from 'next-auth';
 import prisma from '@/lib/prisma';
+import { authOptions } from '@/lib/auth';
 import { ok, fail, handle } from '@/lib/api';
 import { bookingSchema } from '@/lib/validations';
-import { calculateJobFinancials } from '@/lib/calculations';
+import { calculateBookingFinancials } from '@/lib/calculations';
+import { createSnapToken } from '@/lib/midtrans';
+import { sendWAMessage } from '@/lib/whatsapp';
 
 export async function POST(req: Request) {
   return handle(async () => {
+    // 1. Booking requires an authenticated session.
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return fail('Harus login untuk booking.', 401);
+    }
+
+    // 2. Validate input (identity comes from the session, not the body).
     const body = await req.json().catch(() => null);
     if (!body) return fail('Body permintaan tidak valid.', 400);
-
     const input = bookingSchema.parse(body);
 
+    // 3. Provider must exist and be open for bookings (snapshot the rate now).
     const provider = await prisma.providerProfile.findUnique({
       where: { id: input.providerProfileId },
-      include: { user: { select: { name: true } } },
+      include: { user: { select: { name: true, phone: true } } },
     });
-    if (!provider) return fail('Tukang tidak ditemukan.', 404);
+    if (!provider || !provider.isVerified || !provider.available) {
+      return fail('Tukang tidak tersedia.', 400);
+    }
 
-    const financials = calculateJobFinancials(provider.dailyRate, input.estimatedDays);
+    // 4. Financials — flat platform fee, DP min Rp 20.000.
+    const fin = calculateBookingFinancials(provider.dailyRate, input.estimatedDays, input.dpAmount);
 
-    // A guest customer is created/reused from their WhatsApp number so a Job
-    // (which requires a User) can always be recorded without forcing sign-in.
-    const guestEmail = `wa-${input.customerWaNumber}@guest.gegarap.id`;
-    const customer = await prisma.user.upsert({
-      where: { email: guestEmail },
-      update: { name: input.customerName, phoneNumber: input.customerWaNumber },
-      create: {
-        name: input.customerName,
-        email: guestEmail,
-        phoneNumber: input.customerWaNumber,
-        role: 'CUSTOMER',
-      },
+    // 5. Build the Snap token first (using a pre-generated job id) so we never
+    //    persist a booking whose payment couldn't be created.
+    const jobId = randomUUID();
+    const orderId = `GGR-${jobId}-${Date.now()}`;
+    const snap = await createSnapToken({
+      orderId,
+      amount: fin.dpAmount,
+      customerName: session.user.name ?? session.user.phone,
+      customerPhone: session.user.phone,
+      description: `DP Booking ${provider.category} - ${provider.user.name}`,
     });
 
+    // 6. Persist Job + Payment atomically (nested write).
     const job = await prisma.job.create({
       data: {
-        customerId: customer.id,
+        id: jobId,
+        customerId: session.user.id,
         providerProfileId: provider.id,
-        estimatedDays: input.estimatedDays,
-        customerAddress: input.customerAddress,
-        customerWaNumber: input.customerWaNumber,
-        notes: input.notes || null,
-        isConsentGiven: input.isConsentGiven,
-        totalFee: financials.totalFee,
-        platformCommission: financials.platformCommission,
-        providerPayout: financials.providerPayout,
         status: 'PENDING',
-        payments: {
+        description: input.description,
+        customerAddress: input.customerAddress,
+        customerWaNumber: session.user.phone,
+        district: input.district,
+        scheduledDate: new Date(input.scheduledDate),
+        timeSlot: input.timeSlot,
+        notes: input.notes || null,
+        estimatedDays: input.estimatedDays,
+        dailyRate: provider.dailyRate,
+        totalFee: fin.subtotal,
+        dpAmount: fin.dpAmount,
+        platformCommission: fin.platformFee,
+        providerPayout: fin.providerEarnings,
+        payment: {
           create: {
-            amount: financials.dpAmount,
+            amount: fin.dpAmount,
             type: 'DP',
             status: 'PENDING',
+            midtransOrderId: orderId,
+            midtransToken: snap.token,
           },
         },
       },
-      include: { payments: true },
     });
+
+    // 7. Notify the provider over WhatsApp (best-effort).
+    if (provider.user.phone) {
+      await sendWAMessage(
+        provider.user.phone,
+        `📋 *Booking Baru di gegarap.id!*\n\n` +
+          `Pekerjaan: ${input.description}\n` +
+          `Alamat: ${input.customerAddress}, ${input.district}\n` +
+          `Jadwal: ${new Date(input.scheduledDate).toLocaleDateString('id-ID')}, ${input.timeSlot}\n` +
+          `Estimasi: ${input.estimatedDays} hari\n` +
+          `Total: Rp ${fin.totalAmount.toLocaleString('id-ID')}\n\n` +
+          `Cek dashboard: ${process.env.NEXTAUTH_URL ?? ''}/provider/dashboard`
+      );
+    }
 
     return ok(
       {
         jobId: job.id,
         providerName: provider.user.name,
-        dpAmount: financials.dpAmount,
-        totalFee: financials.totalFee,
+        snapToken: snap.token,
+        mockPayment: snap.mock,
+        dpAmount: fin.dpAmount,
+        totalFee: fin.totalAmount,
       },
       201
     );

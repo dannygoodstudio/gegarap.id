@@ -11,7 +11,34 @@ import {
 
 const schema = z.object({ phone: z.string().min(9) });
 
+// Simple in-memory per-IP rate limit (upgrade to Redis for multi-instance prod).
+// Stops one IP spamming OTPs across many different numbers — which would both
+// run up the Fonnte bill and bomb other people's phones.
+const ipRateLimit = new Map<string, { count: number; resetAt: number }>();
+const IP_WINDOW_MS = 60_000;
+const IP_MAX = 5;
+
+function checkIpRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = ipRateLimit.get(ip);
+  if (!entry || now > entry.resetAt) {
+    ipRateLimit.set(ip, { count: 1, resetAt: now + IP_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= IP_MAX) return false;
+  entry.count++;
+  return true;
+}
+
 export async function POST(req: Request) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  if (!checkIpRateLimit(ip)) {
+    return NextResponse.json(
+      { error: 'Terlalu banyak permintaan. Coba lagi dalam 1 menit.' },
+      { status: 429 }
+    );
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) {

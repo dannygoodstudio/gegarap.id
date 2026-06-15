@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import prisma from './prisma';
 import { sendWAMessage } from './whatsapp';
 
@@ -5,10 +6,11 @@ import { sendWAMessage } from './whatsapp';
 export { normalizePhone, isValidIndonesianPhone } from './whatsapp';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_OTP_ATTEMPTS = 5; // wrong tries before a token is invalidated
 
-/** Generate a 6-digit numeric OTP. */
+/** Generate a 6-digit numeric OTP using a cryptographically secure RNG. */
 export function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return randomInt(100_000, 1_000_000).toString();
 }
 
 /** Send the OTP to a number over WhatsApp. Returns delivery success. */
@@ -27,13 +29,33 @@ export async function saveOtp(phone: string, code: string) {
   });
 }
 
-/** Verify and consume an OTP. Returns true only for a fresh, unused, valid code. */
+/**
+ * Verify and consume an OTP. Returns true only for a fresh, unused, valid code.
+ *
+ * Wrong codes increment an attempt counter; after `MAX_OTP_ATTEMPTS` the token is
+ * burned so an attacker can't brute-force the 6-digit space.
+ */
 export async function verifyOtp(phone: string, code: string): Promise<boolean> {
+  // Match on phone only (not code) so we can count wrong attempts.
   const token = await prisma.otpToken.findFirst({
-    where: { phone, code, used: false, expiresAt: { gt: new Date() } },
+    where: { phone, used: false, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: 'desc' },
   });
   if (!token) return false;
+
+  // Too many wrong tries → invalidate the token.
+  if (token.attempts >= MAX_OTP_ATTEMPTS) {
+    await prisma.otpToken.update({ where: { id: token.id }, data: { used: true } });
+    return false;
+  }
+
+  if (token.code !== code) {
+    await prisma.otpToken.update({
+      where: { id: token.id },
+      data: { attempts: { increment: 1 } },
+    });
+    return false;
+  }
 
   await prisma.otpToken.update({ where: { id: token.id }, data: { used: true } });
   return true;

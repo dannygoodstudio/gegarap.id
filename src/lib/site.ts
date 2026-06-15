@@ -9,4 +9,8 @@ export const SITE = {
   emailSupport: 'support@gegarap.id',
   emailPrivacy: 'privacy@gegarap.id',
   area: 'Daerah Istimewa Yogyakarta',
+  /** Flat platform fee (Rupiah) taken by gegarap.id per completed job. */
+  platformFee: 20_000,
+  /** Minimum down payment (Rupiah) required to confirm a booking. */
+  minimumDp: 20_000,
 } as const;

@@ -1,3 +1,4 @@
+import prisma from '@/lib/prisma';
 import { ok, fail, handle } from '@/lib/api';
 import { contactSchema } from '@/lib/validations';
 
@@ -8,13 +9,12 @@ export async function POST(req: Request) {
 
     const input = contactSchema.parse(body);
 
-    // No SMTP/inbox table wired up yet — log the inquiry so it is captured in
-    // server logs. Swap this for an email send or a `ContactMessage` model later.
-    console.info('[contact] Pesan masuk:', {
-      name: input.name,
-      email: input.email,
-      message: input.message,
-      at: new Date().toISOString(),
+    await prisma.contactRequest.create({
+      data: {
+        name: input.name,
+        phone: input.phone,
+        message: input.message,
+      },
     });
 
     return ok({ received: true }, 201);

@@ -6,13 +6,14 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─── USER ─────────────────────────────────────────────────────────────────
+// Auth identity. Customers and providers are both Users; a provider also has a
+// linked ProviderProfile. `phone` is the canonical WhatsApp OTP login identity
+// (format 628xxxxxxxxxx); `phoneNumber` is the legacy free-form contact field.
 model User {
   id              String           @id @default(uuid())
   name            String
   email           String           @unique
-  // Canonical, normalised WhatsApp login identity (format: 628xxxxxxxxxx).
-  // Set when a user authenticates via WhatsApp OTP. Distinct from the legacy
-  // free-form `phoneNumber` used for display/contact.
   phone           String?          @unique
   passwordHash    String?
   phoneNumber     String?
@@ -20,74 +21,140 @@ model User {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   jobsAsCustomer  Job[]            @relation("CustomerJobs")
+  reviews         Review[]
   providerProfile ProviderProfile?
 }
 
+// ─── OTP TOKEN ────────────────────────────────────────────────────────────
 model OtpToken {
   id        String   @id @default(uuid())
-  phone     String
+  phone     String // format kanonik: 628xxxxxxxxxx
   code      String
   expiresAt DateTime
   used      Boolean  @default(false)
+  attempts  Int      @default(0) // maks 5 percobaan salah lalu invalidasi
   createdAt DateTime @default(now())
 
   @@index([phone])
 }
 
+// ─── PROVIDER PROFILE ─────────────────────────────────────────────────────
 model ProviderProfile {
-  id             String   @id @default(uuid())
-  userId         String   @unique
-  category       String
-  dailyRate      Float
-  goPayNumber    String?
-  isVerified     Boolean  @default(false)
-  bio            String?
-  avatarUrl      String?
-  rating         Float    @default(0)
-  ratingCount    Int      @default(0)
-  completedJobs  Int      @default(0)
-  latitude       Float?
-  longitude      Float?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  category      String
+  districts     String[] @default([]) // kecamatan operasional, maks 5
+  dailyRate     Float
+  goPayNumber   String?
+  payoutMethod  String? // "bank" | "gopay" | "ovo" | "dana"
+  payoutDetails Json? // { bankName, accountNumber, accountName } atau { phone }
+  isVerified    Boolean  @default(false)
+  available     Boolean  @default(true)
+  bio           String?
+  avatarUrl     String?
+  ktpImageUrl   String? // URL KTP setelah upload (KYC)
+  rating        Float    @default(0)
+  ratingCount   Int      @default(0)
+  completedJobs Int      @default(0)
+  latitude      Float?
+  longitude     Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
   jobsAsProvider Job[]    @relation("ProviderJobs")
+  reviews        Review[]
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([category])
   @@index([isVerified])
 }
 
+// ─── JOB (booking) ─────────────────────────────────────────────────────────
+// The booking entity. Financials are snapshotted at creation time.
 model Job {
-  id                 String          @id @default(uuid())
-  customerId         String
-  providerProfileId  String
-  status             String          @default("PENDING")
-  estimatedDays      Int
-  customerAddress    String
-  customerWaNumber   String
-  notes              String?
-  isConsentGiven     Boolean         @default(true)
-  totalFee           Float
-  platformCommission Float
-  providerPayout     Float
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
-  customer           User            @relation("CustomerJobs", fields: [customerId], references: [id])
-  provider           ProviderProfile @relation("ProviderJobs", fields: [providerProfileId], references: [id])
-  payments           Payment[]
+  id                String   @id @default(uuid())
+  customerId        String
+  providerProfileId String
+  status            String   @default("PENDING") // PENDING|CONFIRMED|IN_PROGRESS|COMPLETED|CANCELLED
+  description       String?
+  estimatedDays     Int
+  customerAddress   String
+  customerWaNumber  String
+  district          String?
+  scheduledDate     DateTime?
+  timeSlot          String? // "pagi" | "siang" | "sore"
+  notes             String?
+  isConsentGiven    Boolean  @default(true)
 
+  // Finansial — semua dalam Rupiah
+  dailyRate          Float @default(0) // snapshot tarif saat booking
+  totalFee           Float // subtotal = dailyRate * estimatedDays
+  dpAmount           Float @default(0) // DP yang dibayar (min Rp 20.000)
+  platformCommission Float // platform fee flat Rp 20.000
+  providerPayout     Float // totalFee - platformCommission
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer User            @relation("CustomerJobs", fields: [customerId], references: [id])
+  provider ProviderProfile @relation("ProviderJobs", fields: [providerProfileId], references: [id])
+  payment  Payment?
+  review   Review?
+
+  @@index([customerId])
   @@index([providerProfileId])
   @@index([status])
 }
 
+// ─── PAYMENT ──────────────────────────────────────────────────────────────
 model Payment {
-  id            String   @id @default(uuid())
-  jobId         String
-  amount        Float
-  type          String
-  status        String   @default("PENDING")
-  midtransTrxId String?  @unique
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  job           Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  jobId  String @unique
+  amount Float // jumlah DP yang dibayar
+  type   String @default("DP")
+  status String @default("PENDING") // PENDING|PAID|DISBURSED|REFUNDED|FAILED
+
+  // Midtrans
+  midtransTrxId       String?   @unique
+  midtransOrderId     String?   @unique // format: GGR-{jobId}-{timestamp}
+  midtransToken       String? // Snap token
+  midtransPaymentType String? // gopay, bank_transfer, dll
+  midtransVaNumber    String? // virtual account number jika ada
+  paidAt              DateTime?
+
+  // Disbursement (setelah customer klik Selesai)
+  disbursedAt        DateTime?
+  disbursedAmount    Float?
+  platformFeeCharged Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+// ─── REVIEW ───────────────────────────────────────────────────────────────
+model Review {
+  id                String   @id @default(uuid())
+  jobId             String   @unique
+  userId            String
+  providerProfileId String
+  rating            Int // 1–5
+  comment           String?
+  createdAt         DateTime @default(now())
+
+  job      Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id])
+  provider ProviderProfile @relation(fields: [providerProfileId], references: [id])
+
+  @@index([providerProfileId])
+}
+
+// ─── CONTACT REQUEST (dari form /help) ────────────────────────────────────
+model ContactRequest {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String
+  message   String
+  createdAt DateTime @default(now())
 }

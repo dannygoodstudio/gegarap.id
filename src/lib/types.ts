@@ -2,6 +2,7 @@
 export interface ProviderListItem {
   id: string;
   category: string;
+  districts: string[];
   dailyRate: number;
   bio: string | null;
   avatarUrl: string | null;
