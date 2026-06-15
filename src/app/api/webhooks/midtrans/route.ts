@@ -38,19 +38,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 
-  // 1. Verify signature — reject anything we can't authenticate.
+  // 1. Verify signature. Ack with 200 (not 4xx) for anything we can't
+  //    authenticate — Midtrans flags the URL and retries on non-200, and its
+  //    dashboard "test notification" is unsigned/foreign. We just don't process
+  //    unverified payloads.
   if (!verifySignature(order_id, status_code, gross_amount, serverKey, signature_key)) {
-    console.error('[Midtrans Webhook] Invalid signature', { order_id });
-    return NextResponse.json({ ok: false }, { status: 403 });
+    console.error('[Midtrans Webhook] Invalid signature, ignoring', { order_id });
+    return NextResponse.json({ ok: true, ignored: 'invalid signature' });
   }
 
-  // 2. Find the payment record.
+  // 2. Find the payment record. Unknown order_id (e.g. the dashboard test
+  //    notification) → ack 200 so the URL validates and Midtrans stops retrying.
   const payment = await prisma.payment.findUnique({
     where: { midtransOrderId: order_id },
     include: { job: true },
   });
   if (!payment) {
-    return NextResponse.json({ ok: false, message: 'Payment not found' }, { status: 404 });
+    return NextResponse.json({ ok: true, ignored: 'payment not found', order_id });
   }
 
   const isSuccess =
