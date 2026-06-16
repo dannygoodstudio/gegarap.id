@@ -56,8 +56,8 @@ const providers = [
     longitude: 110.3642,
   },
   {
-    name: 'Joko Widodo',
-    email: 'joko@example.com',
+    name: 'Bambang Wijaya',
+    email: 'bambang@example.com',
     phone: '628110000004',
     category: 'Tukang Kebun',
     districts: ['Ngaglik', 'Kalasan'],
