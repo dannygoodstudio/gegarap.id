@@ -16,7 +16,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
-const SUPABASE_BUCKET = process.env.SUPABASE_KTP_BUCKET ?? 'ktp-private';
+const SUPABASE_BUCKET =
+  process.env.SUPABASE_KTP_BUCKET ?? process.env.SUPABASE_BUCKET ?? 'ktp-private';
 
 /** True when real, write-capable storage credentials are present. */
 export const isStorageConfigured = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
