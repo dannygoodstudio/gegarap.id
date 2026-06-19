@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import prisma from './prisma';
-import { sendWAMessage } from './whatsapp';
+import { sendWATemplate } from './whatsapp';
 
 // Re-export phone helpers so callers can `import { normalizePhone } from '@/lib/otp'`.
 export { normalizePhone, isValidIndonesianPhone } from './whatsapp';
@@ -8,17 +8,33 @@ export { normalizePhone, isValidIndonesianPhone } from './whatsapp';
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_OTP_ATTEMPTS = 5; // wrong tries before a token is invalidated
 
+// Konfigurasi template OTP di Meta. Nama/bahasa dapat dioverride lewat env agar
+// cocok dengan template yang sudah di-approve pada akun WhatsApp Business Anda.
+const OTP_TEMPLATE_NAME = process.env.WHATSAPP_OTP_TEMPLATE || 'otp_verification';
+const OTP_TEMPLATE_LANG = process.env.WHATSAPP_OTP_LANG || 'id';
+// Set `true` bila template OTP Anda kategori Authentication dengan tombol
+// "copy code"/one-tap yang juga butuh parameter kode.
+const OTP_TEMPLATE_HAS_BUTTON = process.env.WHATSAPP_OTP_BUTTON_COPY === 'true';
+
 /** Generate a 6-digit numeric OTP using a cryptographically secure RNG. */
 export function generateOtp(): string {
   return randomInt(100_000, 1_000_000).toString();
 }
 
-/** Send the OTP to a number over WhatsApp. Returns delivery success. */
+/**
+ * Send the OTP to a number over WhatsApp using the approved `otp_verification`
+ * template. Returns delivery success.
+ *
+ * Isi teks pesan ditentukan oleh template di sisi Meta (bukan di kode); kita
+ * hanya mengisi placeholder `{{1}}` pada body dengan kode OTP.
+ */
 export async function sendOtpWhatsApp(phone: string, otp: string): Promise<boolean> {
-  const message =
-    `Kode OTP gegarap.id Anda: *${otp}*\n\n` +
-    'Berlaku 5 menit. Jangan bagikan kode ini kepada siapa pun.';
-  return sendWAMessage(phone, message);
+  return sendWATemplate(phone, {
+    name: OTP_TEMPLATE_NAME,
+    language: OTP_TEMPLATE_LANG,
+    bodyParams: [otp],
+    copyCodeButtonParam: OTP_TEMPLATE_HAS_BUTTON ? otp : undefined,
+  });
 }
 
 /** Persist an OTP, replacing any earlier code for the same number. */

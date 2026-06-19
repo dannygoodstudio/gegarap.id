@@ -13,7 +13,7 @@ const schema = z.object({ phone: z.string().min(9) });
 
 // Simple in-memory per-IP rate limit (upgrade to Redis for multi-instance prod).
 // Stops one IP spamming OTPs across many different numbers — which would both
-// run up the Fonnte bill and bomb other people's phones.
+// run up the WhatsApp Cloud API bill and bomb other people's phones.
 const ipRateLimit = new Map<string, { count: number; resetAt: number }>();
 const IP_WINDOW_MS = 60_000;
 const IP_MAX = 5;
