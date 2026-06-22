@@ -58,6 +58,14 @@ jobs:
           # string when `src/lib/prisma.ts` is imported. Use the real secret
           # if available, otherwise a harmless placeholder for fork PRs.
           DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public' }}
+          # NEXT_PUBLIC_* values are inlined at build time and are public by
+          # design (governed by Firestore rules, not secrecy). The client auth
+          # pages prerender `getAuth()` during build, which throws
+          # `auth/invalid-api-key` without these — so the CI gate build needs the
+          # real Firebase web config.
+          NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyAXDLfO3XFwwy1ST4n4DAWktrA5ftNhz5s
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: gegarap.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: gegarap
 
       - name: Test (skipped if no `test` script)
         run: npm test --if-present
