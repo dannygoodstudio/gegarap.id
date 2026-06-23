@@ -6,6 +6,7 @@ import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { ToastProvider } from '@/components/ui';
 import { AuthProvider } from '@/components/providers/AuthProvider';
+import { WhatsAppReminderModal } from '@/components/providers/WhatsAppReminderModal';
 
 const MIDTRANS_SNAP_SRC =
   process.env.MIDTRANS_IS_PRODUCTION === 'true'
@@ -63,6 +64,7 @@ export default function RootLayout({
             <Navbar />
             <main className="flex-1">{children}</main>
             <Footer />
+            <WhatsAppReminderModal />
           </ToastProvider>
         </AuthProvider>
         {MIDTRANS_CLIENT_KEY && (
