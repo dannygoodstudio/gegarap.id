@@ -1,8 +1,6 @@
 import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/firebase/session';
 import { ok, fail, handle } from '@/lib/api';
-import { AUTO_RELEASE_HOURS } from '@/lib/payout';
-import { enqueueWhatsApp } from '@/lib/outbox';
 
 /**
  * POST /api/bookings/:id/mark-done — the provider reports the job finished. The
@@ -25,15 +23,6 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     if (!job.payment || job.payment.status !== 'HELD') return fail('Status pembayaran tidak valid.', 400);
 
     await prisma.job.update({ where: { id: job.id }, data: { status: 'AWAITING_CONFIRMATION' } });
-
-    if (job.customer.phone) {
-      await enqueueWhatsApp(
-        job.customer.phone,
-        `📷 *Pekerjaan Selesai — Mohon Konfirmasi*\n\nTukang menandai booking #${job.id.slice(-6).toUpperCase()} selesai.\n` +
-          `Silakan periksa dan konfirmasi di aplikasi. Bila tidak ada konfirmasi/komplain dalam ${AUTO_RELEASE_HOURS} jam, dana otomatis dicairkan ke tukang.`,
-        `job:${job.id}:awaiting-confirmation`
-      );
-    }
 
     return ok({ jobStatus: 'AWAITING_CONFIRMATION' });
   })();

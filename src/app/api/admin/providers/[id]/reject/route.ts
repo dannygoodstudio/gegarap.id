@@ -3,7 +3,6 @@ import prisma from '@/lib/prisma';
 import { ok, fail, handle } from '@/lib/api';
 import { requireAdmin } from '@/lib/admin-guard';
 import { recordAudit, AuditAction } from '@/lib/audit';
-import { enqueueWhatsApp } from '@/lib/outbox';
 
 const rejectSchema = z.object({
   reason: z.string().trim().min(5, 'Alasan minimal 5 karakter').max(500),
@@ -43,19 +42,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       targetId: profile.id,
       metadata: { name: profile.user.name, reason },
     });
-
-    // Tell the provider why, so they can fix and resubmit (best-effort, via the
-    // outbox). No dedupeKey — a provider can be rejected more than once across
-    // resubmissions, and each rejection is a distinct notification.
-    if (profile.user.phone) {
-      await enqueueWhatsApp(
-        profile.user.phone,
-        `❌ *Verifikasi KYC Belum Disetujui*\n\n` +
-          `Halo ${profile.user.name}, pendaftaran tukang Anda belum bisa kami setujui.\n` +
-          `Alasan: ${reason}\n\n` +
-          `Silakan perbaiki dan kirim ulang melalui halaman pendaftaran.`
-      );
-    }
 
     return ok({ id: profile.id, kycStatus: 'REJECTED' });
   })();

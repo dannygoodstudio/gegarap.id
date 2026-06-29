@@ -5,7 +5,6 @@ import { ok, fail, handle } from '@/lib/api';
 import { evaluateRefund, DEFAULT_REFUND_POLICY } from '@/lib/refund-policy';
 import { transitionPayment, InvalidTransitionError } from '@/lib/payment-state';
 import { recordAudit, AuditAction } from '@/lib/audit';
-import { notifyPaymentStatus } from '@/lib/notifications';
 import { refundViaGateway } from '@/lib/midtrans';
 import { logEvent } from '@/lib/logger';
 
@@ -161,11 +160,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           targetId: payment.id,
           metadata: { auto: true, scenario: decision.scenario, refundAmount: decision.refundAmount },
         });
-        await notifyPaymentStatus(payment.id, 'REFUNDED', {
-          refundAmount: decision.refundAmount,
-          providerCompensation: decision.providerCompensation,
-          reason: decision.reason,
-        });
         return ok({ scenario: decision.scenario, outcome: 'REFUNDED', refundAmount: decision.refundAmount, message: decision.reason });
       }
 
@@ -176,7 +170,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         triggeredBy: session.user.id,
         reason: input.reason,
       });
-      await notifyPaymentStatus(payment.id, 'DISPUTED', { reason: input.reason });
       return ok({ scenario: decision.scenario, outcome: 'DISPUTED', refundAmount: 0, message: decision.reason });
     } catch (e) {
       if (e instanceof InvalidTransitionError) {

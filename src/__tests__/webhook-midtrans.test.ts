@@ -1,10 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mockPrisma } from './mocks/prisma';
 import { POST } from '@/app/api/webhooks/midtrans/route';
-
-// Avoid any real WhatsApp call from the success path.
-vi.mock('@/lib/whatsapp', () => ({ __esModule: true, sendWAMessage: vi.fn() }));
 
 const SERVER_KEY = 'test-server-key';
 

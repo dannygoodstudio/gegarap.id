@@ -2,7 +2,6 @@ import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/firebase/session';
 import { ok, fail, handle } from '@/lib/api';
 import { transitionPayment, InvalidTransitionError } from '@/lib/payment-state';
-import { notifyPaymentStatus } from '@/lib/notifications';
 import { assertProviderOwnsJob } from '@/lib/authz';
 import { logEvent } from '@/lib/logger';
 
@@ -40,7 +39,6 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     }
     await prisma.job.update({ where: { id: job.id }, data: { status: 'IN_PROGRESS' } });
     logEvent('payment.status_changed', { paymentId: job.payment.id, from: 'PAID', to: 'HELD' });
-    await notifyPaymentStatus(job.payment.id, 'HELD');
 
     return ok({ jobStatus: 'IN_PROGRESS', paymentStatus: 'HELD' });
   })();

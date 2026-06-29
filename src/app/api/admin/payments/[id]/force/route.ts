@@ -6,7 +6,6 @@ import { transitionPayment, InvalidTransitionError, type PaymentStatus } from '@
 import { releaseAndSettle } from '@/lib/payout';
 import { recordAudit, AuditAction } from '@/lib/audit';
 import { refundViaGateway } from '@/lib/midtrans';
-import { notifyPaymentStatus } from '@/lib/notifications';
 import { logEvent } from '@/lib/logger';
 
 const forceSchema = z.object({
@@ -82,7 +81,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         metadata: { reason: input.reason, from: current, forced: true, refundAmount: payment.amount },
       });
       logEvent('refund.resolved', { paymentId: payment.id, to: 'REFUNDED', by: admin.id, forced: true });
-      await notifyPaymentStatus(payment.id, 'REFUNDED', { refundAmount: payment.amount, reason: input.reason });
       return ok({ paymentId: payment.id, action: 'REFUND', status: 'REFUNDED' });
     } catch (e) {
       if (e instanceof InvalidTransitionError) {

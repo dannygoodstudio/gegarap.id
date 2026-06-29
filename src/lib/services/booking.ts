@@ -26,7 +26,6 @@ import {
   isManualTransferConfigured,
   type ManualTransferInstruction,
 } from '@/lib/manual-transfer';
-import { enqueueWhatsApp } from '@/lib/outbox';
 import { checkBookingVelocity, recordDeviceAndCheck } from '@/lib/fraud';
 import { assessBookingRisk, type RiskBand } from '@/lib/risk-scoring';
 import { paymentRepository } from '@/lib/repositories/payment';
@@ -217,21 +216,6 @@ export async function createBooking(
     riskBand: risk.band,
     riskScore: risk.score,
   });
-
-  // Notify the provider over WhatsApp (durable + non-blocking via the outbox).
-  if (provider.user.phone) {
-    await enqueueWhatsApp(
-      provider.user.phone,
-      `📋 *Booking Baru di gegarap.id!*\n\n` +
-        `Pekerjaan: ${input.description}\n` +
-        `Alamat: ${input.customerAddress}, ${input.district}\n` +
-        `Jadwal: ${new Date(input.scheduledDate).toLocaleDateString('id-ID')}, ${input.timeSlot}\n` +
-        `Estimasi: ${input.estimatedDays} hari\n` +
-        `Total: Rp ${fin.totalAmount.toLocaleString('id-ID')}\n\n` +
-        `Cek dashboard: ${process.env.APP_URL ?? ''}/provider/dashboard`,
-      `job:${jobId}:new`
-    );
-  }
 
   return {
     jobId: job.id,

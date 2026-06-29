@@ -3,13 +3,11 @@
  * event instead of free-form `console.log`, so logs are queryable and can be
  * tagged with paymentId/bookingId for tracing a transaction.
  *
- * Two sinks beyond stdout, both optional and best-effort:
+ * One sink beyond stdout, optional and best-effort:
  *  - Sentry (via `lib/sentry`) for `warn`/`error` — no-op until configured.
- *  - Ops WhatsApp (`OPS_ALERT_PHONE`) for the must-page alarms in `notifyOps`.
  */
 
 import { captureMessage, type CaptureLevel } from './sentry';
-import { sendWAMessage } from './whatsapp';
 
 export type LogLevel = 'info' | 'warn' | 'error';
 
@@ -81,25 +79,15 @@ export function logAlert(alert: string, data: Record<string, unknown> = {}): voi
 }
 
 /**
- * Send a must-page alert to the ops WhatsApp (`OPS_ALERT_PHONE`). Best-effort and
- * never throws — alerting must not break the path that raised it. Use this for
- * the highest-severity alarms (financial mismatch, repeated signature failures,
- * repeated disbursement failures). Always pair with `logAlert` for the record.
+ * Record a must-page alert for the highest-severity alarms (financial mismatch,
+ * repeated signature failures, repeated disbursement failures). Emits an
+ * `ops.alerted` error-level event (→ stdout + Sentry) so an alerting rule can
+ * match it. Best-effort and never throws — alerting must not break the path that
+ * raised it. Always pair with `logAlert` for the record.
+ *
+ * (Previously also paged an ops WhatsApp number; programmatic WhatsApp was
+ * removed, so this is now log/Sentry-only.)
  */
 export async function notifyOps(alert: string, data: Record<string, unknown> = {}): Promise<void> {
-  const phone = process.env.OPS_ALERT_PHONE;
-  if (!phone) return;
-  try {
-    const lines = Object.entries(data)
-      .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
-      .join('\n');
-    await sendWAMessage(
-      phone,
-      `🚨 *ALERT: ${alert}*\n\n${lines}\n\nenv: ${process.env.NODE_ENV ?? 'unknown'}`
-    );
-    logEvent('ops.alerted', { alert });
-  } catch (err) {
-    // Swallow — already logged via logAlert at the call site.
-    console.error('[ops-alert] failed to deliver', alert, err);
-  }
+  logEvent('ops.alerted', { alert, ...data }, 'error');
 }

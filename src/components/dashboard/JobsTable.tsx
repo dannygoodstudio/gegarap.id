@@ -1,14 +1,36 @@
 'use client';
 
 import * as React from 'react';
-import { Search, ArrowUpDown, ChevronLeft, ChevronRight, Inbox, Check } from 'lucide-react';
+import { Search, ArrowUpDown, ChevronLeft, ChevronRight, Inbox, Check, MessageCircle } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, buildWALink } from '@/lib/utils';
+
+/**
+ * The customer's WhatsApp as a click-to-chat link (wa.me) once the DP unlocks
+ * it, so the provider reaches the client directly. Falls back to the locked hint.
+ */
+function CustomerWa({ number, name }: { number: string | null; name: string }) {
+  if (!number) {
+    return <span className="italic text-muted-foreground/60">{LOCKED_CONTACT}</span>;
+  }
+  return (
+    <a
+      href={buildWALink(number, `Halo ${name}, saya tukang dari gegarap.id terkait pekerjaan Anda.`)}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex items-center gap-1 font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
+    >
+      <MessageCircle className="h-3.5 w-3.5" />
+      {number}
+    </a>
+  );
+}
 
 export interface JobRow {
   id: string;
@@ -141,9 +163,7 @@ export function JobsTable({ jobs }: { jobs: JobRow[] }) {
                     <div>
                       <div className="font-semibold text-foreground">{job.customerName}</div>
                       <div className="text-xs text-muted-foreground">
-                        {job.customerWaNumber ?? (
-                          <span className="italic text-muted-foreground/60">{LOCKED_CONTACT}</span>
-                        )}
+                        <CustomerWa number={job.customerWaNumber} name={job.customerName} />
                       </div>
                     </div>
                   </div>
@@ -191,9 +211,7 @@ export function JobsTable({ jobs }: { jobs: JobRow[] }) {
                 <div>
                   <div className="font-semibold text-foreground">{job.customerName}</div>
                   <div className="text-xs text-muted-foreground">
-                    {job.customerWaNumber ?? (
-                      <span className="italic text-muted-foreground/60">{LOCKED_CONTACT}</span>
-                    )}
+                    <CustomerWa number={job.customerWaNumber} name={job.customerName} />
                   </div>
                 </div>
               </div>

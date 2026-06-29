@@ -25,7 +25,6 @@ import {
   ConcurrentTransitionError,
 } from '../payment-state';
 import { logEvent, logAlert, notifyOps } from '../logger';
-import { notifyPaymentStatus } from '../notifications';
 import { sendReceiptEmail } from '../email';
 import { paymentRepository } from '../repositories/payment';
 import { webhookEventRepository } from '../repositories/webhook-event';
@@ -172,8 +171,6 @@ export async function handleMidtransWebhook(body: MidtransNotification): Promise
       if (res.changed) {
         await prisma.job.update({ where: { id: payment.jobId }, data: { status: 'CONFIRMED' } });
         logEvent('payment.status_changed', { paymentId: payment.id, from: 'PENDING', to: 'PAID' });
-        // Notify both parties (Bagian 9): customer "diterima", provider "job baru".
-        await notifyPaymentStatus(payment.id, 'PAID');
         // Email the customer their receipt + PDF nota (best-effort, off the critical path).
         await sendReceiptEmail(payment.jobId).catch(() => {});
       }
@@ -190,7 +187,6 @@ export async function handleMidtransWebhook(body: MidtransNotification): Promise
       );
       if (res.changed) {
         logEvent('payment.status_changed', { paymentId: payment.id, from: 'PENDING', to: 'FAILED' });
-        await notifyPaymentStatus(payment.id, 'FAILED');
       }
     }
   } catch (err) {

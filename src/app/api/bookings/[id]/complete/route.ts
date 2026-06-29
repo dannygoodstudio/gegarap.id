@@ -78,8 +78,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       });
     });
 
-    // Notification (provider payout + customer thank-you) is fired centrally by
-    // releaseAndSettle → notifyPaymentStatus('RELEASED') (Bagian 9).
     return ok({
       released: true,
       payoutStatus: settle.status,

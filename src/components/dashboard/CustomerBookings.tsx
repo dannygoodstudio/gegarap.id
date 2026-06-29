@@ -14,6 +14,7 @@ import {
   Hammer,
   CreditCard,
   Receipt,
+  MessageCircle,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button, buttonVariants } from '@/components/ui/Button';
@@ -22,11 +23,13 @@ import { Textarea } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TukangIllustration } from '@/components/illustrations/TukangIllustration';
 import { useToast } from '@/components/ui/Toast';
-import { formatCurrency, formatBookingDate, timeSlotStart, cn } from '@/lib/utils';
+import { formatCurrency, formatBookingDate, timeSlotStart, cn, buildWALink } from '@/lib/utils';
 
 export interface CustomerBooking {
   id: string;
   providerName: string;
+  /** The tukang's WhatsApp, for click-to-chat. Null until the DP unlocks contact. */
+  providerWaNumber: string | null;
   category: string;
   description: string;
   address: string;
@@ -396,6 +399,20 @@ export function CustomerBookings({ bookings }: { bookings: CustomerBooking[] }) 
                       <Button size="sm" onClick={() => openRating(b.id)}>
                         Pekerjaan Selesai
                       </Button>
+                    )}
+                    {b.providerWaNumber && (
+                      <a
+                        href={buildWALink(
+                          b.providerWaNumber,
+                          `Halo ${b.providerName}, saya customer gegarap.id untuk booking #${b.id.slice(-6).toUpperCase()}.`
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'text-emerald-600 hover:text-emerald-700')}
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        Hubungi Tukang
+                      </a>
                     )}
                     <Link
                       href={`/booking/${b.id}/receipt`}

@@ -6,7 +6,6 @@ import { transitionPayment, InvalidTransitionError, type PaymentStatus } from '@
 import { releaseAndSettle } from '@/lib/payout';
 import { recordAudit, AuditAction } from '@/lib/audit';
 import { refundViaGateway } from '@/lib/midtrans';
-import { enqueueWhatsApp } from '@/lib/outbox';
 import { logEvent } from '@/lib/logger';
 
 const resolveSchema = z.object({
@@ -56,12 +55,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       await transitionPayment({ paymentId: payment.id, to, triggeredBy: adminId, reason });
     }
 
-    // Enqueue to the outbox (the PENDING_REVIEW guard above prevents a refund
-    // from being resolved — and thus notified — twice, so no dedupeKey needed).
-    const notify = async (phone: string | null | undefined, msg: string) => {
-      if (phone) await enqueueWhatsApp(phone, msg);
-    };
-
     try {
       if (input.decision === 'APPROVE') {
         const refundAmount = input.refundAmount ?? rr.amount ?? payment.amount;
@@ -95,14 +88,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           targetId: payment.id,
           metadata: { refundRequestId: rr.id, refundAmount, reason: input.reason },
         });
-        await notify(
-          job.customer.phone,
-          `✅ *Refund Disetujui*\n\nRp ${refundAmount.toLocaleString('id-ID')} akan dikembalikan ke metode pembayaran Anda dalam beberapa hari kerja.`
-        );
-        await notify(
-          job.provider.user.phone,
-          `ℹ️ *Hasil Peninjauan*\n\nBooking #${job.id.slice(-6).toUpperCase()}: tim memutuskan refund ke customer.\nAlasan: ${input.reason}`
-        );
         return ok({ refundRequestId: rr.id, outcome: 'REFUNDED', refundAmount });
       }
 
@@ -111,7 +96,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       if (to === 'RELEASED') {
         // Release escrow + settle the provider payout. Suppress the generic
         // RELEASED notice — we send a tailored dispute-ruling message below.
-        await releaseAndSettle(payment.id, adminId, `admin reject refund (sided with provider): ${input.reason}`, { notify: false });
+        await releaseAndSettle(payment.id, adminId, `admin reject refund (sided with provider): ${input.reason}`);
       } else {
         await transitionPayment({ paymentId: payment.id, to, triggeredBy: adminId, reason: `admin reject refund: ${input.reason}` });
       }
@@ -133,14 +118,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         targetId: payment.id,
         metadata: { refundRequestId: rr.id, to, reason: input.reason },
       });
-      await notify(
-        job.customer.phone,
-        `ℹ️ *Hasil Peninjauan Pembatalan*\n\nPengajuan refund Anda untuk booking #${job.id.slice(-6).toUpperCase()} tidak disetujui.\nAlasan: ${input.reason}`
-      );
-      await notify(
-        job.provider.user.phone,
-        `✅ *Hasil Peninjauan*\n\nBooking #${job.id.slice(-6).toUpperCase()}: komplain tidak terbukti, pekerjaan dilanjutkan/diselesaikan.`
-      );
       return ok({ refundRequestId: rr.id, outcome: to });
     } catch (e) {
       if (e instanceof InvalidTransitionError) {

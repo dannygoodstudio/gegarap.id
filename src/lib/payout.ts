@@ -6,8 +6,6 @@ import {
 } from './payment-state';
 import { getDisbursementProvider } from './disbursement';
 import { recordAudit, AuditAction } from './audit';
-import { sendWAMessage } from './whatsapp';
-import { notifyPaymentStatus } from './notifications';
 import { logEvent, notifyOps } from './logger';
 
 /** Below this accumulated amount, payout is held & batched (Bagian 6). */
@@ -67,12 +65,6 @@ export async function settleProviderPayout(paymentId: string): Promise<SettleRes
   // KYC gate.
   if (!isPayoutEligible(payment.provider)) {
     logEvent('disbursement.failed', { payoutId: payout.id, paymentId, reason: 'kyc_or_payout_details_missing' }, 'warn');
-    if (payment.provider.user.phone) {
-      await sendWAMessage(
-        payment.provider.user.phone,
-        `⏳ *Dana Menunggu Verifikasi*\n\nDana Rp ${amount.toLocaleString('id-ID')} dari pekerjaan yang selesai sudah aman, tapi belum bisa dicairkan.\nSelesaikan verifikasi rekening/KYC Anda untuk mencairkannya.`
-      );
-    }
     return { payoutId: payout.id, status: 'SCHEDULED', reason: 'kyc_pending' };
   }
 
@@ -143,8 +135,7 @@ export async function settleProviderPayout(paymentId: string): Promise<SettleRes
 export async function releaseAndSettle(
   paymentId: string,
   triggeredBy: string,
-  reason: string,
-  opts: { notify?: boolean } = {}
+  reason: string
 ): Promise<SettleResult> {
   const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
   if (!payment) throw new Error(`Payment not found: ${paymentId}`);
@@ -162,14 +153,5 @@ export async function releaseAndSettle(
 
   logEvent('payment.status_changed', { paymentId, to: 'RELEASED', triggeredBy });
   const settle = await settleProviderPayout(paymentId);
-
-  // Notify both parties of the release/payout outcome (Bagian 9), unless the
-  // caller is sending its own contextual message (e.g. admin dispute ruling).
-  if (opts.notify !== false) {
-    await notifyPaymentStatus(paymentId, 'RELEASED', {
-      settleStatus: settle.status,
-      settleReason: settle.reason,
-    });
-  }
   return settle;
 }

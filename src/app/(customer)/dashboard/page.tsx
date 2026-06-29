@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/firebase/session';
 import { CustomerBookings, type CustomerBooking } from '@/components/dashboard/CustomerBookings';
 import { CompleteWhatsAppPrompt } from '@/components/dashboard/CompleteWhatsAppPrompt';
+import { isContactUnlocked } from '@/lib/authz';
 
 export const metadata: Metadata = { title: 'Dashboard Saya' };
 export const dynamic = 'force-dynamic';
@@ -15,7 +16,7 @@ export default async function CustomerDashboard() {
   const jobs = await prisma.job.findMany({
     where: { customerId: session.user.id },
     include: {
-      provider: { include: { user: { select: { name: true } } } },
+      provider: { include: { user: { select: { name: true, phone: true } } } },
       payment: { select: { status: true } },
       review: { select: { rating: true } },
     },
@@ -25,6 +26,9 @@ export default async function CustomerDashboard() {
   const bookings: CustomerBooking[] = jobs.map((j) => ({
     id: j.id,
     providerName: j.provider.user.name,
+    // Provider contact opens to the customer only after the DP is paid (same
+    // PROTECTED tier as the provider side), surfaced as a wa.me click-to-chat.
+    providerWaNumber: isContactUnlocked(j.payment?.status) ? j.provider.user.phone : null,
     category: j.provider.category,
     description: j.description ?? '',
     address: j.customerAddress,
