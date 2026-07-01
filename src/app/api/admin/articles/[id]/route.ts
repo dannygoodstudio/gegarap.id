@@ -1,8 +1,15 @@
+import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import prisma from '@/lib/prisma';
 import { ok, fail, handle } from '@/lib/api';
 import { requireAdmin } from '@/lib/admin-guard';
 import { recordAudit, AuditAction } from '@/lib/audit';
+
+/** Regenerate the ISR-cached public article pages after a status change. */
+function revalidateArticle(slug: string) {
+  revalidatePath('/artikel');
+  revalidatePath(`/artikel/${slug}`);
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -52,6 +59,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       metadata: { title: existing.title, from: existing.status, to: status },
     });
 
+    revalidateArticle(updated.slug);
+
     return ok(updated);
   })();
 }
@@ -64,7 +73,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
 
     const existing = await prisma.article.findUnique({
       where: { id: params.id },
-      select: { id: true, title: true },
+      select: { id: true, title: true, slug: true },
     });
     if (!existing) return fail('Artikel tidak ditemukan.', 404);
 
@@ -76,6 +85,8 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
       targetId: existing.id,
       metadata: { title: existing.title },
     });
+
+    revalidateArticle(existing.slug);
 
     return ok({ id: existing.id, deleted: true });
   })();

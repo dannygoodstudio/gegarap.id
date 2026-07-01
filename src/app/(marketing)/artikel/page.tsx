@@ -6,7 +6,10 @@ import { listPublishedArticles } from '@/lib/services/article';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 
-export const dynamic = 'force-dynamic';
+// ISR: published articles are static SEO content. Cache + regenerate hourly;
+// the admin publish/archive flow calls revalidatePath('/artikel') so status
+// changes appear immediately rather than waiting out this window.
+export const revalidate = 3600;
 
 export const metadata: Metadata = pageMetadata({
   title: 'Tips & Panduan Tukang Rumah',
@@ -16,7 +19,10 @@ export const metadata: Metadata = pageMetadata({
 });
 
 export default async function ArtikelListPage() {
-  const articles = await listPublishedArticles();
+  // Guarded: this page now prerenders at build time (ISR), so a transient DB
+  // failure during build/regeneration degrades to the empty state instead of
+  // failing the whole build/deploy.
+  const articles = await listPublishedArticles().catch(() => []);
 
   return (
     <div className="container py-12 sm:py-16">

@@ -9,7 +9,11 @@ import { CATEGORY_CTA, categorySearchHref, type ContentCategory } from '@/lib/ai
 import { MarkdownContent } from '@/components/MarkdownContent';
 import { ArticleActions } from '@/components/article/ArticleActions';
 
-export const dynamic = 'force-dynamic';
+// ISR: article bodies are immutable-ish SEO content. Cache each slug and
+// regenerate hourly; the admin publish/archive/delete flow calls
+// revalidatePath('/artikel/<slug>') so a freshly published (or pulled) article
+// is served correctly without waiting out this window.
+export const revalidate = 3600;
 
 interface FaqItem {
   q: string;

@@ -22,7 +22,12 @@ import { TrustBar } from '@/components/home/TrustBar';
 import { TestimonialSection } from '@/components/home/TestimonialSection';
 import { Hero3D } from '@/components/sections/Hero3D';
 
-export const dynamic = 'force-dynamic';
+// ISR: the only server-side work here is the aggregate-rating query that feeds
+// the LocalBusiness JSON-LD — data that drifts slowly. Caching the shell and
+// regenerating hourly makes the homepage edge-cacheable (TTFB → CDN hit instead
+// of a per-request DB round-trip). All live content (map, stats, testimonials)
+// is fetched client-side, so it stays fresh regardless of this window.
+export const revalidate = 3600;
 
 const features = [
   {
@@ -64,10 +69,16 @@ export default async function MarketingHome() {
   // Only rating fields are needed here now — the stats band and the map both
   // fetch their own data client-side (/api/stats, /api/workers). This query just
   // feeds the LocalBusiness structured-data aggregate rating.
-  const providers = await prisma.providerProfile.findMany({
-    where: { isVerified: true, available: true },
-    select: { rating: true, ratingCount: true },
-  });
+  //
+  // Guarded so a transient DB failure during the (build-time / background) ISR
+  // render degrades to "no aggregate rating" instead of throwing the whole
+  // homepage — the page has no other server-side data dependency.
+  const providers = await prisma.providerProfile
+    .findMany({
+      where: { isVerified: true, available: true },
+      select: { rating: true, ratingCount: true },
+    })
+    .catch(() => [] as Array<{ rating: number; ratingCount: number }>);
 
   const count = providers.length;
   const totalReviews = providers.reduce((s, p) => s + p.ratingCount, 0);
