@@ -25,18 +25,32 @@ const nextConfig = {
     // server route that touches Firebase Admin (auth/session/providers/etc.).
     serverComponentsExternalPackages: ['firebase-admin'],
   },
-  // Let Firebase's Google sign-in popup keep a handle to its opener so
-  // window.closed/window.close() work — otherwise the browser's default COOP
-  // blocks them, spamming "Cross-Origin-Opener-Policy would block..." warnings
-  // and making the popup-close detection flaky. `same-origin-allow-popups` is
-  // the value Firebase recommends for OAuth-popup apps.
+  // Security + isolation headers applied to every response.
+  //
+  // COOP: `same-origin-allow-popups` (not the stricter `same-origin`) so
+  // Firebase's Google sign-in popup keeps a handle to its opener — otherwise the
+  // browser blocks window.closed/window.close(), spamming COOP warnings and
+  // making popup-close detection flaky. This is the value Firebase recommends
+  // for OAuth-popup apps.
+  //
+  // The rest are the standard "Helmet"-equivalent hardening set. Deliberately NO
+  // Content-Security-Policy here: a correct CSP for this app has to allowlist
+  // Firebase/Google, Midtrans (sandbox + prod), Supabase, and Leaflet tiles, and
+  // shipping one blind would break checkout and auth. That belongs in its own
+  // staged, report-only-first change. Permissions-Policy only locks down camera
+  // and microphone (verified unused); geolocation/payment are left permissive so
+  // the map and Midtrans Snap keep working.
   async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [{ key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' }],
-      },
+    const securityHeaders = [
+      { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
+      { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'X-DNS-Prefetch-Control', value: 'on' },
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=()' },
     ];
+    return [{ source: '/:path*', headers: securityHeaders }];
   },
 };
 
